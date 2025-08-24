@@ -121,6 +121,8 @@ function App() {
       streamUrl = `https://vidfast.pro/movie/${submittedCode}`;
     } else if (source === 'vidsrc') {
       streamUrl = `https://vidsrc.net/embed/movie?imdb=${submittedCode}`;
+    } else if (source === 'embedsu') {
+      streamUrl = `https://embed.su/embed/movie/${submittedCode}`;
     }
   }
 
@@ -224,6 +226,16 @@ function App() {
           }`}
         >
           Vidsrc
+        </button>
+        <button
+          onClick={() => setSource('embedsu')}
+          className={`font-semibold py-2 px-5 rounded-md transition-colors duration-300 ${
+            source === 'embedsu'
+              ? 'bg-white text-black'
+              : 'border-2 border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:border-neutral-600'
+          }`}
+        >
+          EmbedSu
         </button>
       </div>
 
