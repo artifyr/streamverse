@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import toast, { Toaster } from 'react-hot-toast';
 
 // It's highly recommended to move this to a .env file
 // Create a .env file in your project root and add:
@@ -21,6 +22,49 @@ function App() {
     () => localStorage.getItem('vidgen_source') || 'vidfast'
   );
   const searchContainerRef = useRef(null);
+
+  // Effect for showing random love toasts
+  useEffect(() => {
+    const phrases = [
+      "I loveee youu babypie",
+      "Hope you know i love youu",
+      "Mwahhh",
+      "Goodmorning Pineapple",
+      "You're my favorite person",
+      "Thinking of you, my love",
+      "You make my world sooo much betterr",
+      "Just a little reminder that I lovee youuu",
+      "Hiii babyyypie"
+    ];
+    const emojis = ['❤️', '💕', '😽', '😘'];
+
+    const showRandomToast = () => {
+      const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+      const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+      // By passing a function, we can render custom JSX and control the layout.
+      toast(
+        () => (
+          <span>
+            {randomPhrase}
+            <span role="img" aria-label="emoji" style={{ marginLeft: '8px' }}>
+              {randomEmoji}
+            </span>
+          </span>
+        ),
+        {
+          // We don't need the icon property here anymore
+          style: {
+            borderRadius: '10px',
+            background: '#333',
+            color: '#fff',
+          },
+        }
+      );
+    };
+
+    const intervalId = setInterval(showRandomToast, 10 * 1000); // 10 seconds
+    return () => clearInterval(intervalId); // Cleanup on unmount
+  }, []); // Empty array ensures this runs only once
 
   useEffect(() => {
     localStorage.setItem('vidgen_imdb_code', submittedCode);
@@ -141,7 +185,8 @@ function App() {
   }, [searchResults, searchQuery, handleMovieSelect, updateHistory]);
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-white flex flex-col items-center p-4 pt-12 sm:p-6 sm:pt-16 font-sans">
+    <div className="min-h-screen bg-neutral-900 text-white flex flex-col items-center p-6 pt-32 sm:p-8 sm:pt-32 font-sans">
+      <Toaster position="top-center" />
       
       <div className="text-center mb-8">
         <h1 className="text-4xl sm:text-5xl font-bold mb-2 text-white">
