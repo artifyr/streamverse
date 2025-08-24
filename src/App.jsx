@@ -268,7 +268,7 @@ function App() {
       )}
       {/* --- Footer --- */}
       <footer className="mt-auto text-center text-neutral-500 text-sm py-4">
-        made by Shoganai with ❤️
+        made for my baby with ❤️
       </footer>
     </div>
   );
