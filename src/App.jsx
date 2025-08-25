@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import PopularMovies from './components/PopularMovies';
+import MovieSection from './components/MovieSection';
 
 // It's highly recommended to move this to a .env file
 // Create a .env file in your project root and add:
@@ -21,6 +21,9 @@ function App() {
   );
   const [popularMovies, setPopularMovies] = useState([]);
   const [isLoadingPopular, setIsLoadingPopular] = useState(true);
+  const [newlyReleasedMovies, setNewlyReleasedMovies] = useState([]);
+  const [isLoadingNewlyReleased, setIsLoadingNewlyReleased] = useState(true);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const searchContainerRef = useRef(null);
   const initialToastShown = useRef(false);
 
@@ -75,27 +78,40 @@ function App() {
     return () => clearInterval(intervalId); // Cleanup on unmount
   }, []); // Empty array ensures this runs only once
 
-  // Effect to fetch popular movies on initial load
+  // Effect to fetch movie lists on initial load
   useEffect(() => {
-    const fetchPopularMovies = async () => {
-      // Only fetch if no movie is selected. If a movie is selected, ensure loading is false.
+    const fetchMovieLists = async () => {
       if (submittedCode) {
         setIsLoadingPopular(false);
+        setIsLoadingNewlyReleased(false);
         return;
       }
       setIsLoadingPopular(true);
+      setIsLoadingNewlyReleased(true);
+
       try {
-        const response = await fetch(`https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`);
-        if (!response.ok) throw new Error('Failed to fetch popular movies');
-        const data = await response.json();
-        setPopularMovies(data.results || []);
+        const [popularResponse, newlyReleasedResponse] = await Promise.all([
+          fetch(`https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`),
+          fetch(`https://api.themoviedb.org/3/movie/now_playing?api_key=${TMDB_API_KEY}&language=en-US&page=1`)
+        ]);
+
+        if (!popularResponse.ok) throw new Error('Failed to fetch popular movies');
+        if (!newlyReleasedResponse.ok) throw new Error('Failed to fetch newly released movies');
+
+        const popularData = await popularResponse.json();
+        const newlyReleasedData = await newlyReleasedResponse.json();
+
+        setPopularMovies(popularData.results || []);
+        setNewlyReleasedMovies(newlyReleasedData.results || []);
+
       } catch (error) {
-        console.error('Error fetching popular movies:', error);
+        console.error('Error fetching movie lists:', error);
       } finally {
         setIsLoadingPopular(false);
+        setIsLoadingNewlyReleased(false);
       }
     };
-    fetchPopularMovies();
+    fetchMovieLists();
   }, [submittedCode]); // Re-fetch if we go back to the homepage
 
   useEffect(() => {
@@ -131,6 +147,13 @@ function App() {
 
   const handleGoHome = useCallback(() => {
     setSubmittedCode('');
+  }, []);
+
+  const scrollTop = useCallback(() => {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }, []);
 
   useEffect(() => {
@@ -170,6 +193,21 @@ function App() {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
+  }, []);
+
+  // Effect for scroll to top button visibility
+  useEffect(() => {
+    const checkScrollTop = () => {
+      // Show button after scrolling down 400px
+      if (window.scrollY > 400) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
+      }
+    };
+
+    window.addEventListener("scroll", checkScrollTop);
+    return () => window.removeEventListener("scroll", checkScrollTop);
   }, []);
 
   let streamUrl = '';
@@ -339,12 +377,37 @@ function App() {
           ></iframe>
         </div>
       ) : (
-        <PopularMovies movies={popularMovies} isLoading={isLoadingPopular} onMovieSelect={handleMovieSelect} />
+        <>
+          <MovieSection
+            title="Popular Movies"
+            movies={popularMovies}
+            isLoading={isLoadingPopular}
+            onMovieSelect={handleMovieSelect}
+          />
+          <MovieSection
+            title="Newly Released"
+            movies={newlyReleasedMovies}
+            isLoading={isLoadingNewlyReleased}
+            onMovieSelect={handleMovieSelect}
+          />
+        </>
       )}
       {/* --- Footer --- */}
       <footer className="mt-auto text-center text-neutral-500 text-sm py-12">
         made for my baby with ❤️
       </footer>
+
+      {showScrollTop && (
+        <button
+          onClick={scrollTop}
+          className="fixed bottom-8 right-8 bg-white text-black p-3 rounded-full shadow-lg hover:bg-neutral-200 transition-colors duration-300 z-20"
+          aria-label="Scroll to top"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 19.5v-15m0 0l-6.75 6.75M12 4.5l6.75 6.75" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
