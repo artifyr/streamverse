@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
+import PopularMovies from './components/PopularMovies';
 
 // It's highly recommended to move this to a .env file
 // Create a .env file in your project root and add:
@@ -18,6 +19,8 @@ function App() {
   const [source, setSource] = useState(
     () => localStorage.getItem('vidgen_source') || 'vidfast'
   );
+  const [popularMovies, setPopularMovies] = useState([]);
+  const [isLoadingPopular, setIsLoadingPopular] = useState(true);
   const searchContainerRef = useRef(null);
   const initialToastShown = useRef(false);
 
@@ -72,6 +75,29 @@ function App() {
     return () => clearInterval(intervalId); // Cleanup on unmount
   }, []); // Empty array ensures this runs only once
 
+  // Effect to fetch popular movies on initial load
+  useEffect(() => {
+    const fetchPopularMovies = async () => {
+      // Only fetch if no movie is selected. If a movie is selected, ensure loading is false.
+      if (submittedCode) {
+        setIsLoadingPopular(false);
+        return;
+      }
+      setIsLoadingPopular(true);
+      try {
+        const response = await fetch(`https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`);
+        if (!response.ok) throw new Error('Failed to fetch popular movies');
+        const data = await response.json();
+        setPopularMovies(data.results || []);
+      } catch (error) {
+        console.error('Error fetching popular movies:', error);
+      } finally {
+        setIsLoadingPopular(false);
+      }
+    };
+    fetchPopularMovies();
+  }, [submittedCode]); // Re-fetch if we go back to the homepage
+
   useEffect(() => {
     localStorage.setItem('vidgen_imdb_code', submittedCode);
   }, [submittedCode]);
@@ -101,6 +127,10 @@ function App() {
     } catch (error) {
       console.error('Error fetching movie details:', error);
     }
+  }, []);
+
+  const handleGoHome = useCallback(() => {
+    setSubmittedCode('');
   }, []);
 
   useEffect(() => {
@@ -167,7 +197,18 @@ function App() {
   }, [searchResults, searchQuery, handleMovieSelect]);
   
   return (
-    <div className="min-h-screen bg-neutral-900 text-white flex flex-col items-center p-6 pt-32 sm:p-8 sm:pt-32 font-sans">
+    <div className="relative min-h-screen bg-neutral-900 text-white flex flex-col items-center p-6 pt-32 sm:p-8 sm:pt-32 font-sans">
+      {submittedCode && (
+        <button
+          onClick={handleGoHome}
+          className="absolute top-6 left-6 sm:top-8 sm:left-8 bg-neutral-800 hover:bg-neutral-700 text-white p-3 rounded-full transition-colors duration-300 z-20 shadow-lg"
+          aria-label="Go to homepage"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h7.5" />
+          </svg>
+        </button>
+      )}
       <Toaster position="top-center" />
       
       <div className="text-center mb-8">
@@ -179,14 +220,28 @@ function App() {
 
       <div ref={searchContainerRef} className="w-full max-w-lg relative">
         <form onSubmit={handleSubmit} className="w-full flex gap-2 mb-4">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search for a movie..."
-            className="flex-grow bg-neutral-900 border-2 border-neutral-700 rounded-md px-4 py-2 text-white placeholder-neutral-500 focus:outline-none focus:border-white focus:ring-1 focus:ring-white transition-colors duration-300"
-            autoComplete="off"
-          />
+          <div className="relative flex-grow">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search for a movie..."
+              className="w-full bg-neutral-900 border-2 border-neutral-700 rounded-md px-4 pr-10 py-2 text-white placeholder-neutral-500 focus:outline-none focus:border-white focus:ring-1 focus:ring-white transition-colors duration-300"
+              autoComplete="off"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-neutral-500 hover:text-white transition-colors"
+                aria-label="Clear search"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
           <button
             type="submit"
             className="bg-white hover:bg-neutral-200 text-black font-bold py-2 px-4 sm:px-6 rounded-md transition-colors duration-300"
@@ -204,11 +259,19 @@ function App() {
         {!isSearching && searchResults.length > 0 && (
           <ul className="absolute w-full bg-neutral-800 border border-neutral-700 rounded-md mt-1 max-h-80 overflow-y-auto z-10">
             {searchResults.slice(0, 10).map((movie) => (
-              <li key={movie.id}>
-                <button
-                  onClick={() => handleMovieSelect(movie)}
-                  className="w-full text-left p-3 hover:bg-neutral-700 transition-colors duration-200 flex items-center gap-4"
-                >
+              <li
+                key={movie.id}
+                onClick={() => handleMovieSelect(movie)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleMovieSelect(movie);
+                  }
+                }}
+                className="w-full text-left p-3 hover:bg-neutral-700 transition-colors duration-200 flex items-center gap-4 cursor-pointer"
+                role="button"
+                tabIndex="0"
+              >
                   {movie.poster_path ? (
                     <img 
                       src={`https://image.tmdb.org/t/p/w92${movie.poster_path}`} 
@@ -226,7 +289,6 @@ function App() {
                       {movie.release_date ? movie.release_date.substring(0, 4) : 'N/A'}
                     </p>
                   </div>
-                </button>
               </li>
             ))}
           </ul>
@@ -266,16 +328,18 @@ function App() {
         </button>
       </div>
 
-      {submittedCode && (
+      {submittedCode ? (
         <div className="w-full max-w-screen-xl bg-black rounded-lg shadow-lg overflow-hidden border border-neutral-800">
           <iframe
-            key={`${submittedCode}-${source}`} 
+            key={`${submittedCode}-${source}`}
             className="w-full aspect-video"
             src={streamUrl}
             title="Movie Player"
             allowFullScreen
           ></iframe>
         </div>
+      ) : (
+        <PopularMovies movies={popularMovies} isLoading={isLoadingPopular} onMovieSelect={handleMovieSelect} />
       )}
       {/* --- Footer --- */}
       <footer className="mt-auto text-center text-neutral-500 text-sm py-12">
