@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useReducer } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import MovieSection from './components/MovieSection';
 
@@ -6,7 +6,42 @@ import MovieSection from './components/MovieSection';
 // Create a .env file in your project root and add:
 // VITE_TMDB_API_KEY="your_tmdb_api_key"
 // Then you can access it with import.meta.env.VITE_TMDB_API_KEY
-const TMDB_API_KEY = '7d372d2acc09d0ec7b9a035be499c4c4';
+const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+
+const initialMovieListsState = {
+  barbie: [],
+  isBarbieExpanded: false,
+  tinkerbell: [],
+  isTinkerbellExpanded: false,
+  popular: [],
+  isLoading: true,
+  error: null,
+};
+
+function movieListsReducer(state, action) {
+  switch (action.type) {
+    case 'FETCH_START':
+      return { ...state, isLoading: true, error: null };
+    case 'FETCH_SUCCESS':
+      return {
+        ...state,
+        isLoading: false,
+        popular: action.payload.popular,
+        barbie: action.payload.barbie,
+        tinkerbell: action.payload.tinkerbell,
+      };
+    case 'FETCH_ERROR':
+      return { ...state, isLoading: false, error: action.payload };
+    case 'TOGGLE_BARBIE_EXPAND':
+      return { ...state, isBarbieExpanded: !state.isBarbieExpanded };
+    case 'TOGGLE_TINKERBELL_EXPAND':
+      return { ...state, isTinkerbellExpanded: !state.isTinkerbellExpanded };
+    case 'ABORT_FETCH':
+      return { ...state, isLoading: false };
+    default:
+      throw new Error(`Unhandled action type: ${action.type}`);
+  }
+}
 
 function App() {
   // State to hold the value from the input field
@@ -19,14 +54,7 @@ function App() {
   const [source, setSource] = useState(
     () => localStorage.getItem('vidgen_source') || 'vidfast'
   );
-  const [barbieMoviesList, setBarbieMoviesList] = useState([]);
-  const [isBarbieExpanded, setIsBarbieExpanded] = useState(false);
-  const [tinkerbellMoviesList, setTinkerbellMoviesList] = useState([]);
-  const [isTinkerbellExpanded, setIsTinkerbellExpanded] = useState(false);
-  const [isLoadingCustomSections, setIsLoadingCustomSections] = useState(true);
-  const [popularMovies, setPopularMovies] = useState([]);
-  const [isLoadingPopular, setIsLoadingPopular] = useState(true);
-  const [movieListError, setMovieListError] = useState(null);
+  const [movieListsState, dispatchMovieLists] = useReducer(movieListsReducer, initialMovieListsState);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const searchContainerRef = useRef(null);
   const initialToastShown = useRef(false);
@@ -44,7 +72,7 @@ function App() {
       "Just a little reminder that I lovee youuu",
       "Hiii babyyypie"
     ];
-    const emojis = ['❤️', '💕', '😽', '😘'];
+    const emojis = ['❤️', '💕', '😽', '😘', '🌸'];
 
     const showRandomToast = () => {
       const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
@@ -60,7 +88,6 @@ function App() {
           </span>
         ),
         {
-          // We don't need the icon property here anymore
           style: {
             borderRadius: '10px',
             background: '#333',
@@ -78,7 +105,7 @@ function App() {
       initialToastShown.current = true;
     }
 
-    const intervalId = setInterval(showRandomToast, 30 * 60 * 1000); // 30 minutes
+    const intervalId = setInterval(showRandomToast, 15 * 60 * 1000); // 15 minutes
     return () => clearInterval(intervalId); // Cleanup on unmount
   }, []); // Empty array ensures this runs only once
 
@@ -87,13 +114,10 @@ function App() {
     const fetchMovieLists = async () => {
       if (submittedCode) {
         // If a movie is selected, no need to load lists
-        setIsLoadingCustomSections(false);
-        setIsLoadingPopular(false);
+        dispatchMovieLists({ type: 'ABORT_FETCH' });
         return;
       }
-      setIsLoadingCustomSections(true);
-      setIsLoadingPopular(true);
-      setMovieListError(null);
+      dispatchMovieLists({ type: 'FETCH_START' });
 
       const fetchAllPagesForQuery = async (query) => {
         try {
@@ -155,19 +179,19 @@ function App() {
         if (!popularResponse.ok) throw new Error('Failed to fetch popular movies');
 
         const popularData = await popularResponse.json();
-        setPopularMovies(popularData.results || []);
-
         const animationGenreId = 16; // Genre ID for Animation
 
-        setBarbieMoviesList(filterAndDeduplicate(barbieMovies, animationGenreId));
-        setTinkerbellMoviesList(filterAndDeduplicate(tinkerbellMovies, animationGenreId));
-
+        dispatchMovieLists({
+          type: 'FETCH_SUCCESS',
+          payload: {
+            popular: popularData.results || [],
+            barbie: filterAndDeduplicate(barbieMovies, animationGenreId),
+            tinkerbell: filterAndDeduplicate(tinkerbellMovies, animationGenreId),
+          },
+        });
       } catch (error) {
         console.error('Error fetching movie lists:', error);
-        setMovieListError('Could not load movies. Please try again later.');
-      } finally {
-        setIsLoadingCustomSections(false);
-        setIsLoadingPopular(false);
+        dispatchMovieLists({ type: 'FETCH_ERROR', payload: 'Could not load movies. Please try again later.' });
       }
     };
     fetchMovieLists();
@@ -316,49 +340,55 @@ function App() {
         <h1 className="text-4xl sm:text-5xl font-bold mb-2 text-white">
           StreamVerse
         </h1>
-        <p className="text-neutral-400">Search for a movie to play.</p>
+        <p className="text-neutral-400">Streaming site for my love 💕</p>
       </div>
 
       <div ref={searchContainerRef} className="w-full max-w-lg relative">
-        <form onSubmit={handleSubmit} className="w-full flex gap-2 mb-4">
-          <div className="relative flex-grow">
+        <form onSubmit={handleSubmit} className="w-full mb-4">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <svg className="w-5 h-5 text-neutral-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+            </div>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search for a movie..."
-              className="w-full bg-neutral-900 border-2 border-neutral-700 rounded-md px-4 pr-10 py-2 text-white placeholder-neutral-500 focus:outline-none focus:border-white focus:ring-1 focus:ring-white transition-colors duration-300"
+              className="w-full bg-neutral-900 border-2 border-neutral-700 rounded-lg pl-10 pr-28 sm:pr-32 py-2 text-white placeholder-neutral-500 focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/40 transition-colors duration-300"
               autoComplete="off"
             />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-neutral-500 hover:text-white transition-colors cursor-pointer"
-                aria-label="Clear search"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            <div className="absolute inset-y-0 right-2 flex items-center gap-2">
+              {isSearching ? (
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
+              ) : searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="text-neutral-500 hover:text-white transition-colors cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+              <button
+                type="submit"
+                className="bg-neutral-100/70 hover:bg-neutral-200 text-black font-bold py-1 px-4 sm:px-4 -mr-1 rounded-md transition-colors duration-300 cursor-pointer"
+              >
+                Play
               </button>
-            )}
+            </div>
           </div>
-          <button
-            type="submit"
-            className="bg-white hover:bg-neutral-200 text-black font-bold py-2 px-4 sm:px-6 rounded-md transition-colors duration-300 cursor-pointer"
-          >
-            Play
-          </button>
         </form>
 
-        {isSearching && (
-          <div className="absolute w-full bg-neutral-800 border border-neutral-700 rounded-md mt-1 p-4 text-center text-neutral-400 z-10">
-            Searching...
-          </div>
-        )}
-
         {!isSearching && searchResults.length > 0 && (
-          <ul className="absolute w-full bg-neutral-800 border border-neutral-700 rounded-md mt-1 max-h-80 overflow-y-auto z-10">
+          <ul className="absolute w-full bg-neutral-800 border border-neutral-700 rounded-xl mt-1 max-h-80 overflow-y-auto z-10">
             {searchResults.slice(0, 10).map((movie) => (
               <li
                 key={movie.id}
@@ -437,54 +467,56 @@ function App() {
             src={streamUrl}
             title="Movie Player"
             allowFullScreen
+            allow="autoplay; encrypted-media; picture-in-picture"
+            referrerPolicy="origin-when-cross-origin"
           ></iframe>
         </div>
-      ) : movieListError ? (
+      ) : movieListsState.error ? (
         <div className="w-full max-w-screen-xl mt-8 text-center text-red-400 bg-red-900/20 p-6 rounded-lg">
           <p className="font-semibold">Something went wrong</p>
-          <p>{movieListError}</p>
+          <p>{movieListsState.error}</p>
         </div>
       ) : (
         <>
-          {(isLoadingCustomSections || barbieMoviesList.length > 0) && (
+          {(movieListsState.isLoading || movieListsState.barbie.length > 0) && (
             <MovieSection
               title="Barbie Animated Movies"
-              movies={isBarbieExpanded ? barbieMoviesList : barbieMoviesList.slice(0, FOR_YOU_INITIAL_LIMIT)}
-              isLoading={isLoadingCustomSections}
+              movies={movieListsState.isBarbieExpanded ? movieListsState.barbie : movieListsState.barbie.slice(0, FOR_YOU_INITIAL_LIMIT)}
+              isLoading={movieListsState.isLoading}
               onMovieSelect={handleMovieSelect}
-              isExpandable={barbieMoviesList.length > FOR_YOU_INITIAL_LIMIT}
-              isExpanded={isBarbieExpanded}
-              onToggleExpand={() => setIsBarbieExpanded((prev) => !prev)}
+              isExpandable={movieListsState.barbie.length > FOR_YOU_INITIAL_LIMIT}
+              isExpanded={movieListsState.isBarbieExpanded}
+              onToggleExpand={() => dispatchMovieLists({ type: 'TOGGLE_BARBIE_EXPAND' })}
             />
           )}
-          {(isLoadingCustomSections || tinkerbellMoviesList.length > 0) && (
+          {(movieListsState.isLoading || movieListsState.tinkerbell.length > 0) && (
             <MovieSection
               title="Tinkerbell Animated Movies"
-              movies={isTinkerbellExpanded ? tinkerbellMoviesList : tinkerbellMoviesList.slice(0, FOR_YOU_INITIAL_LIMIT)}
-              isLoading={isLoadingCustomSections}
+              movies={movieListsState.isTinkerbellExpanded ? movieListsState.tinkerbell : movieListsState.tinkerbell.slice(0, FOR_YOU_INITIAL_LIMIT)}
+              isLoading={movieListsState.isLoading}
               onMovieSelect={handleMovieSelect}
-              isExpandable={tinkerbellMoviesList.length > FOR_YOU_INITIAL_LIMIT}
-              isExpanded={isTinkerbellExpanded}
-              onToggleExpand={() => setIsTinkerbellExpanded((prev) => !prev)}
+              isExpandable={movieListsState.tinkerbell.length > FOR_YOU_INITIAL_LIMIT}
+              isExpanded={movieListsState.isTinkerbellExpanded}
+              onToggleExpand={() => dispatchMovieLists({ type: 'TOGGLE_TINKERBELL_EXPAND' })}
             />
           )}
           <MovieSection
             title="Popular Movies"
-            movies={popularMovies}
-            isLoading={isLoadingPopular}
+            movies={movieListsState.popular}
+            isLoading={movieListsState.isLoading}
             onMovieSelect={handleMovieSelect}
           />
         </>
       )}
       {/* --- Footer --- */}
-      <footer className="mt-auto text-center text-neutral-500 text-sm py-12">
+      <footer className="text-center text-neutral-500 text-sm py-16">
         made for my baby with ❤️
       </footer>
 
       {showScrollTop && (
         <button
           onClick={scrollTop}
-          className="fixed bottom-8 right-8 bg-white text-black p-3 rounded-full shadow-lg hover:bg-neutral-200 transition-colors duration-300 z-20 cursor-pointer"
+          className="fixed bottom-8 right-8 bg-neutral-700/50 backdrop-blur-lg text-white p-3 rounded-full shadow-lg hover:bg-black/50 transition-colors duration-300 z-20 cursor-pointer"
           aria-label="Scroll to top"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
