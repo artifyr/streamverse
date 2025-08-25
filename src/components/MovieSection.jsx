@@ -8,6 +8,10 @@ const MovieCard = ({ movie, onMovieSelect }) => {
     </div>
   );
 
+  const releaseYear = movie.release_date
+    ? new Date(movie.release_date).getFullYear()
+    : null;
+
   return (
     <div
       className="cursor-pointer group"
@@ -18,12 +22,20 @@ const MovieCard = ({ movie, onMovieSelect }) => {
       aria-label={`Play ${movie.title}`}
     >
       {movie.poster_path ? (
-        <img
-          src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
-          alt={movie.title}
-          className="rounded-lg w-full h-full object-cover transform transition-transform duration-300 group-hover:scale-105 shadow-lg"
-          loading="lazy"
-        />
+        <div className="relative overflow-hidden rounded-lg shadow-lg aspect-[2/3]">
+          <img
+            src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
+            alt={movie.title}
+            className="w-full h-full object-cover transform transition-transform duration-300 group-hover:scale-105"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
+            <h3 className="text-white font-bold text-base">{movie.title}</h3>
+            {releaseYear && (
+              <p className="text-neutral-300 text-sm">{releaseYear}</p>
+            )}
+          </div>
+        </div>
       ) : (
         <PosterFallback />
       )}

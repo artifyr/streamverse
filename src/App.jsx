@@ -23,6 +23,7 @@ function App() {
   const [isLoadingPopular, setIsLoadingPopular] = useState(true);
   const [newlyReleasedMovies, setNewlyReleasedMovies] = useState([]);
   const [isLoadingNewlyReleased, setIsLoadingNewlyReleased] = useState(true);
+  const [movieListError, setMovieListError] = useState(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const searchContainerRef = useRef(null);
   const initialToastShown = useRef(false);
@@ -88,6 +89,7 @@ function App() {
       }
       setIsLoadingPopular(true);
       setIsLoadingNewlyReleased(true);
+      setMovieListError(null);
 
       try {
         const [popularResponse, newlyReleasedResponse] = await Promise.all([
@@ -106,6 +108,7 @@ function App() {
 
       } catch (error) {
         console.error('Error fetching movie lists:', error);
+        setMovieListError('Could not load movies. Please try again later.');
       } finally {
         setIsLoadingPopular(false);
         setIsLoadingNewlyReleased(false);
@@ -137,10 +140,12 @@ function App() {
       if (details.imdb_id) {
         setSubmittedCode(details.imdb_id);
       } else {
-        console.error('IMDb ID not found for this movie.');
-        // You could add user-facing error handling here
+        const errorMsg = 'Could not find streaming information for this movie.';
+        console.error(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
+      toast.error('Failed to get movie details. Please try again.');
       console.error('Error fetching movie details:', error);
     }
   }, []);
@@ -375,6 +380,11 @@ function App() {
             title="Movie Player"
             allowFullScreen
           ></iframe>
+        </div>
+      ) : movieListError ? (
+        <div className="w-full max-w-screen-xl mt-8 text-center text-red-400 bg-red-900/20 p-6 rounded-lg">
+          <p className="font-semibold">Something went wrong</p>
+          <p>{movieListError}</p>
         </div>
       ) : (
         <>
