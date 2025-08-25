@@ -19,10 +19,13 @@ function App() {
   const [source, setSource] = useState(
     () => localStorage.getItem('vidgen_source') || 'vidfast'
   );
+  const [barbieMoviesList, setBarbieMoviesList] = useState([]);
+  const [isBarbieExpanded, setIsBarbieExpanded] = useState(false);
+  const [tinkerbellMoviesList, setTinkerbellMoviesList] = useState([]);
+  const [isTinkerbellExpanded, setIsTinkerbellExpanded] = useState(false);
+  const [isLoadingCustomSections, setIsLoadingCustomSections] = useState(true);
   const [popularMovies, setPopularMovies] = useState([]);
   const [isLoadingPopular, setIsLoadingPopular] = useState(true);
-  const [newlyReleasedMovies, setNewlyReleasedMovies] = useState([]);
-  const [isLoadingNewlyReleased, setIsLoadingNewlyReleased] = useState(true);
   const [movieListError, setMovieListError] = useState(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const searchContainerRef = useRef(null);
@@ -83,35 +86,88 @@ function App() {
   useEffect(() => {
     const fetchMovieLists = async () => {
       if (submittedCode) {
+        // If a movie is selected, no need to load lists
+        setIsLoadingCustomSections(false);
         setIsLoadingPopular(false);
-        setIsLoadingNewlyReleased(false);
         return;
       }
+      setIsLoadingCustomSections(true);
       setIsLoadingPopular(true);
-      setIsLoadingNewlyReleased(true);
       setMovieListError(null);
 
+      const fetchAllPagesForQuery = async (query) => {
+        try {
+          // Fetch first page to get total pages
+          const initialResponse = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=1`);
+          if (!initialResponse.ok) {
+            console.error(`Failed to fetch initial page for ${query}`);
+            return [];
+          }
+          const initialData = await initialResponse.json();
+          const totalPages = initialData.total_pages;
+          let allResults = initialData.results || [];
+
+          if (totalPages > 1) {
+            const pagePromises = [];
+            // Fetch up to 3 pages total to get more results without being too slow.
+            const maxPagesToFetch = Math.min(totalPages, 3);
+            for (let i = 2; i <= maxPagesToFetch; i++) {
+              pagePromises.push(
+                fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${i}`)
+                  .then(res => res.ok ? res.json() : Promise.resolve({ results: [] }))
+              );
+            }
+            const subsequentPagesData = await Promise.all(pagePromises);
+            subsequentPagesData.forEach(pageData => {
+              allResults.push(...(pageData.results || []));
+            });
+          }
+          return allResults;
+        } catch (error) {
+          console.error(`Error fetching all pages for query "${query}":`, error);
+          return [];
+        }
+      };
+
+      const filterAndDeduplicate = (movies, genreId) => {
+        return movies
+          .filter(
+            (movie) =>
+              movie.genre_ids.includes(genreId) && movie.poster_path
+          )
+          .filter(
+            (movie, index, self) =>
+              index === self.findIndex((m) => m.id === movie.id)
+          );
+      };
+
       try {
-        const [popularResponse, newlyReleasedResponse] = await Promise.all([
+        const [
+          popularResponse,
+          barbieMovies,
+          tinkerbellMovies,
+        ] = await Promise.all([
           fetch(`https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`),
-          fetch(`https://api.themoviedb.org/3/movie/now_playing?api_key=${TMDB_API_KEY}&language=en-US&page=1`)
+          fetchAllPagesForQuery('Barbie'),
+          fetchAllPagesForQuery('Tinkerbell'),
         ]);
 
         if (!popularResponse.ok) throw new Error('Failed to fetch popular movies');
-        if (!newlyReleasedResponse.ok) throw new Error('Failed to fetch newly released movies');
 
         const popularData = await popularResponse.json();
-        const newlyReleasedData = await newlyReleasedResponse.json();
-
         setPopularMovies(popularData.results || []);
-        setNewlyReleasedMovies(newlyReleasedData.results || []);
+
+        const animationGenreId = 16; // Genre ID for Animation
+
+        setBarbieMoviesList(filterAndDeduplicate(barbieMovies, animationGenreId));
+        setTinkerbellMoviesList(filterAndDeduplicate(tinkerbellMovies, animationGenreId));
 
       } catch (error) {
         console.error('Error fetching movie lists:', error);
         setMovieListError('Could not load movies. Please try again later.');
       } finally {
+        setIsLoadingCustomSections(false);
         setIsLoadingPopular(false);
-        setIsLoadingNewlyReleased(false);
       }
     };
     fetchMovieLists();
@@ -239,12 +295,14 @@ function App() {
     }
   }, [searchResults, searchQuery, handleMovieSelect]);
   
+  const FOR_YOU_INITIAL_LIMIT = 14;
+
   return (
     <div className="relative min-h-screen bg-neutral-900 text-white flex flex-col items-center p-6 pt-32 sm:p-8 sm:pt-32 font-sans">
       {submittedCode && (
         <button
           onClick={handleGoHome}
-          className="absolute top-6 left-6 sm:top-8 sm:left-8 bg-neutral-800 hover:bg-neutral-700 text-white p-3 rounded-full transition-colors duration-300 z-20 shadow-lg"
+          className="absolute top-6 left-6 sm:top-8 sm:left-8 bg-neutral-800 hover:bg-neutral-700 text-white p-3 rounded-full transition-colors duration-300 z-20 shadow-lg cursor-pointer"
           aria-label="Go to homepage"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -276,7 +334,7 @@ function App() {
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-neutral-500 hover:text-white transition-colors"
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-neutral-500 hover:text-white transition-colors cursor-pointer"
                 aria-label="Clear search"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -287,7 +345,7 @@ function App() {
           </div>
           <button
             type="submit"
-            className="bg-white hover:bg-neutral-200 text-black font-bold py-2 px-4 sm:px-6 rounded-md transition-colors duration-300"
+            className="bg-white hover:bg-neutral-200 text-black font-bold py-2 px-4 sm:px-6 rounded-md transition-colors duration-300 cursor-pointer"
           >
             Play
           </button>
@@ -341,7 +399,7 @@ function App() {
       <div className="flex gap-4 mb-8 mt-2">
         <button
           onClick={() => setSource('vidfast')}
-          className={`font-semibold py-2 px-5 rounded-md transition-colors duration-300 ${
+          className={`cursor-pointer font-semibold py-2 px-5 rounded-md transition-colors duration-300 ${
             source === 'vidfast'
               ? 'bg-white text-black'
               : 'border-2 border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:border-neutral-600'
@@ -351,7 +409,7 @@ function App() {
         </button>
         <button
           onClick={() => setSource('vidsrc')}
-          className={`font-semibold py-2 px-5 rounded-md transition-colors duration-300 ${
+          className={`cursor-pointer font-semibold py-2 px-5 rounded-md transition-colors duration-300 ${
             source === 'vidsrc'
               ? 'bg-white text-black'
               : 'border-2 border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:border-neutral-600'
@@ -361,7 +419,7 @@ function App() {
         </button>
         <button
           onClick={() => setSource('embedsu')}
-          className={`font-semibold py-2 px-5 rounded-md transition-colors duration-300 ${
+          className={`cursor-pointer font-semibold py-2 px-5 rounded-md transition-colors duration-300 ${
             source === 'embedsu'
               ? 'bg-white text-black'
               : 'border-2 border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:border-neutral-600'
@@ -388,16 +446,32 @@ function App() {
         </div>
       ) : (
         <>
+          {(isLoadingCustomSections || barbieMoviesList.length > 0) && (
+            <MovieSection
+              title="Barbie Animated Movies"
+              movies={isBarbieExpanded ? barbieMoviesList : barbieMoviesList.slice(0, FOR_YOU_INITIAL_LIMIT)}
+              isLoading={isLoadingCustomSections}
+              onMovieSelect={handleMovieSelect}
+              isExpandable={barbieMoviesList.length > FOR_YOU_INITIAL_LIMIT}
+              isExpanded={isBarbieExpanded}
+              onToggleExpand={() => setIsBarbieExpanded((prev) => !prev)}
+            />
+          )}
+          {(isLoadingCustomSections || tinkerbellMoviesList.length > 0) && (
+            <MovieSection
+              title="Tinkerbell Animated Movies"
+              movies={isTinkerbellExpanded ? tinkerbellMoviesList : tinkerbellMoviesList.slice(0, FOR_YOU_INITIAL_LIMIT)}
+              isLoading={isLoadingCustomSections}
+              onMovieSelect={handleMovieSelect}
+              isExpandable={tinkerbellMoviesList.length > FOR_YOU_INITIAL_LIMIT}
+              isExpanded={isTinkerbellExpanded}
+              onToggleExpand={() => setIsTinkerbellExpanded((prev) => !prev)}
+            />
+          )}
           <MovieSection
             title="Popular Movies"
             movies={popularMovies}
             isLoading={isLoadingPopular}
-            onMovieSelect={handleMovieSelect}
-          />
-          <MovieSection
-            title="Newly Released"
-            movies={newlyReleasedMovies}
-            isLoading={isLoadingNewlyReleased}
             onMovieSelect={handleMovieSelect}
           />
         </>
@@ -410,7 +484,7 @@ function App() {
       {showScrollTop && (
         <button
           onClick={scrollTop}
-          className="fixed bottom-8 right-8 bg-white text-black p-3 rounded-full shadow-lg hover:bg-neutral-200 transition-colors duration-300 z-20"
+          className="fixed bottom-8 right-8 bg-white text-black p-3 rounded-full shadow-lg hover:bg-neutral-200 transition-colors duration-300 z-20 cursor-pointer"
           aria-label="Scroll to top"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
