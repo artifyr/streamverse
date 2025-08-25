@@ -15,13 +15,11 @@ function App() {
   const [submittedCode, setSubmittedCode] = useState(
     () => localStorage.getItem('vidgen_imdb_code') || ''
   );
-  const [history, setHistory] = useState(
-    () => JSON.parse(localStorage.getItem('vidgen_history')) || []
-  );
   const [source, setSource] = useState(
     () => localStorage.getItem('vidgen_source') || 'vidfast'
   );
   const searchContainerRef = useRef(null);
+  const initialToastShown = useRef(false);
 
   // Effect for showing random love toasts
   useEffect(() => {
@@ -62,7 +60,15 @@ function App() {
       );
     };
 
-    const intervalId = setInterval(showRandomToast, 10 * 1000); // 10 seconds
+    // In React 18's StrictMode, useEffect runs twice in development.
+    // This ref-based check ensures the initial toast is only shown once.
+    if (!initialToastShown.current) {
+      // Show the first toast immediately on load
+      showRandomToast();
+      initialToastShown.current = true;
+    }
+
+    const intervalId = setInterval(showRandomToast, 30 * 60 * 1000); // 30 minutes
     return () => clearInterval(intervalId); // Cleanup on unmount
   }, []); // Empty array ensures this runs only once
 
@@ -74,21 +80,9 @@ function App() {
     localStorage.setItem('vidgen_source', source);
   }, [source]);
 
-  useEffect(() => {
-    localStorage.setItem('vidgen_history', JSON.stringify(history));
-  }, [history]);
-
-  const updateHistory = useCallback((code) => {
-    if (!code) return;
-    setHistory(prevHistory => {
-      const newHistory = [...new Set([code, ...prevHistory])];
-      return newHistory.slice(0, 10);
-    });
-  }, []);
-
   const handleMovieSelect = useCallback(async (movie) => {
     if (!movie || !movie.id) return;
-
+  
     setSearchQuery('');
     setSearchResults([]);
     setIsSearching(false);
@@ -100,7 +94,6 @@ function App() {
       const details = await response.json();
       if (details.imdb_id) {
         setSubmittedCode(details.imdb_id);
-        updateHistory(details.imdb_id);
       } else {
         console.error('IMDb ID not found for this movie.');
         // You could add user-facing error handling here
@@ -108,7 +101,7 @@ function App() {
     } catch (error) {
       console.error('Error fetching movie details:', error);
     }
-  }, [updateHistory]);
+  }, []);
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -149,16 +142,6 @@ function App() {
     };
   }, []);
 
-  const handleHistoryClick = (code) => {
-    setSubmittedCode(code);
-    setSearchQuery('');
-    setSearchResults([]);
-  };
-
-  const handleClearHistory = () => {
-    setHistory([]);
-  };
-
   let streamUrl = '';
   if (submittedCode) {
     if (source === 'vidfast') {
@@ -178,12 +161,11 @@ function App() {
       const trimmedCode = searchQuery.trim();
       if (trimmedCode.startsWith('tt')) {
         setSubmittedCode(trimmedCode);
-        updateHistory(trimmedCode);
         setSearchQuery('');
       }
     }
-  }, [searchResults, searchQuery, handleMovieSelect, updateHistory]);
-
+  }, [searchResults, searchQuery, handleMovieSelect]);
+  
   return (
     <div className="min-h-screen bg-neutral-900 text-white flex flex-col items-center p-6 pt-32 sm:p-8 sm:pt-32 font-sans">
       <Toaster position="top-center" />
@@ -196,7 +178,7 @@ function App() {
       </div>
 
       <div ref={searchContainerRef} className="w-full max-w-lg relative">
-        <form onSubmit={handleSubmit} className="w-full flex gap-2 mb-1">
+        <form onSubmit={handleSubmit} className="w-full flex gap-2 mb-4">
           <input
             type="text"
             value={searchQuery}
@@ -251,7 +233,7 @@ function App() {
         )}
       </div>
 
-      <div className="flex gap-4 mb-6 mt-4">
+      <div className="flex gap-4 mb-8 mt-2">
         <button
           onClick={() => setSource('vidfast')}
           className={`font-semibold py-2 px-5 rounded-md transition-colors duration-300 ${
@@ -284,34 +266,6 @@ function App() {
         </button>
       </div>
 
-      {history.length > 0 && (
-        <div className="w-full max-w-lg mb-10 text-center sm:text-left">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="text-lg font-semibold text-neutral-300">
-              History
-            </h3>
-            <button
-              onClick={handleClearHistory}
-              className="text-sm text-neutral-500 hover:text-white transition-colors duration-200"
-            >
-              Clear
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
-            {history.map((code) => (
-              <button
-                key={code}
-                onClick={() => handleHistoryClick(code)}
-                className="bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white font-mono text-sm py-1 px-3 rounded-md transition-colors duration-200"
-              >
-                {code}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-
       {submittedCode && (
         <div className="w-full max-w-screen-xl bg-black rounded-lg shadow-lg overflow-hidden border border-neutral-800">
           <iframe
@@ -324,7 +278,7 @@ function App() {
         </div>
       )}
       {/* --- Footer --- */}
-      <footer className="mt-auto text-center text-neutral-500 text-sm py-4">
+      <footer className="mt-auto text-center text-neutral-500 text-sm py-12">
         made for my baby with ❤️
       </footer>
     </div>
