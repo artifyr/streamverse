@@ -184,8 +184,8 @@ function App() {
 
       const fetchAllBengaliMovies = async () => {
         try {
-          // Fetch 3 pages to get up to 60 movies
-          const pagePromises = [1, 2, 3].map(page =>
+          // Fetch 3 pages to get up to 120 movies
+          const pagePromises = [1, 2, 3, 4, 5, 6].map(page =>
             fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=en-US&page=${page}&with_origin_country=IN&with_original_language=bn&primary_release_date.lte=2009-12-31`)
               .then(res => {
                 if (!res.ok) {
