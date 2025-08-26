@@ -17,6 +17,10 @@ const initialMovieListsState = {
   bengali: [],
   isBengaliExpanded: false,
   popular: [],
+  // For date night picker only
+  wongKarWai: [],
+  miyazaki: [],
+  ghibli: [],
   isLoading: true,
   error: null,
 };
@@ -33,6 +37,9 @@ function movieListsReducer(state, action) {
         barbie: action.payload.barbie,
         tinkerbell: action.payload.tinkerbell,
         bengali: action.payload.bengali,
+        wongKarWai: action.payload.wongKarWai,
+        miyazaki: action.payload.miyazaki,
+        ghibli: action.payload.ghibli,
       };
     case 'FETCH_ERROR':
       return { ...state, isLoading: false, error: action.payload };
@@ -84,6 +91,7 @@ function App() {
     () => localStorage.getItem('vidgen_source') || 'vidfast'
   );
   const [movieListsState, dispatchMovieLists] = useReducer(movieListsReducer, initialMovieListsState);
+  const [dateNightPick, setDateNightPick] = useState(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const searchContainerRef = useRef(null);
   const initialToastShown = useRef(false);
@@ -217,26 +225,31 @@ function App() {
         );
       };
 
-      const fetchAllBengaliMovies = async () => {
+      const fetchDiscoverMovies = async (params, pagesToFetch = 3) => {
         try {
-          // Fetch 3 pages to get up to 120 movies
-          const pagePromises = [1, 2, 3, 4, 5, 6].map(page =>
-            fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=en-US&page=${page}&with_origin_country=IN&with_original_language=bn&primary_release_date.lte=2009-12-31`)
+          // Create an array of page numbers [1, 2, ..., pagesToFetch]
+          const pageNumbers = Array.from({ length: pagesToFetch }, (_, i) => i + 1);
+          
+          const pagePromises = pageNumbers.map(page =>
+            fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=en-US&page=${page}&${params}`)
               .then(res => {
                 if (!res.ok) {
-                  console.error(`Failed to fetch page ${page} of Bengali movies`);
+                  console.error(`Failed to fetch page ${page} for params: ${params}`);
                   return Promise.resolve({ results: [] }); // Don't break the Promise.all
                 }
                 return res.json();
               })
           );
-          const bengaliPagesData = await Promise.all(pagePromises);
-          return bengaliPagesData.reduce((allMovies, pageData) => {
+          
+          const pagesData = await Promise.all(pagePromises);
+          
+          // Flatten the array of arrays of movies into a single array
+          return pagesData.reduce((allMovies, pageData) => {
             allMovies.push(...(pageData.results || []));
             return allMovies;
           }, []);
         } catch (error) {
-          console.error('Error fetching all Bengali movies:', error);
+          console.error(`Error fetching discover movies for params "${params}":`, error);
           return []; // Return empty array on failure
         }
       };
@@ -247,11 +260,21 @@ function App() {
           barbieMovies,
           tinkerbellMovies,
           bengaliMovies,
+          wongKarWaiMovies,
+          miyazakiMovies,
+          ghibliMovies,
         ] = await Promise.all([
           fetch(`https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`),
           fetchAllPagesForQuery('Barbie'),
           fetchAllPagesForQuery('Tinkerbell'),
-          fetchAllBengaliMovies(),
+          // Fetch 6 pages for a larger list of older Bengali movies
+          fetchDiscoverMovies('with_origin_country=IN&with_original_language=bn&primary_release_date.lte=2009-12-31', 6),
+          // Wong Kar-wai (director id: 12453)
+          fetchDiscoverMovies('with_people=12453'),
+          // Hayao Miyazaki (director id: 11868)
+          fetchDiscoverMovies('with_people=11868'),
+          // Studio Ghibli (company id: 10342)
+          fetchDiscoverMovies('with_companies=10342'),
         ]);
 
         if (!popularResponse.ok) throw new Error('Failed to fetch popular movies');
@@ -266,6 +289,9 @@ function App() {
             barbie: filterAndDeduplicate(barbieMovies, { genreId: animationGenreId }),
             tinkerbell: filterAndDeduplicate(tinkerbellMovies, { genreId: animationGenreId }),
             bengali: filterAndDeduplicate(bengaliMovies),
+            wongKarWai: filterAndDeduplicate(wongKarWaiMovies),
+            miyazaki: filterAndDeduplicate(miyazakiMovies),
+            ghibli: filterAndDeduplicate(ghibliMovies),
           },
         });
       } catch (error) {
@@ -312,6 +338,38 @@ function App() {
   const handleGoHome = useCallback(() => {
     setSubmittedCode('');
   }, []);
+
+  const handleDateNightPick = useCallback(() => {
+    const allMovies = [
+      ...movieListsState.popular,
+      ...movieListsState.barbie,
+      ...movieListsState.tinkerbell,
+      ...movieListsState.bengali,
+      ...movieListsState.wongKarWai,
+      ...movieListsState.miyazaki,
+      ...movieListsState.ghibli,
+    ];
+
+    if (allMovies.length === 0) {
+      toast("Movie lists are still loading, please wait a moment! ❤️");
+      return;
+    }
+
+    // Deduplicate movies and ensure they have a poster
+    const uniqueMovies = allMovies.filter(
+      (movie, index, self) =>
+        movie.poster_path && index === self.findIndex((m) => m.id === movie.id)
+    );
+
+    if (uniqueMovies.length === 0) {
+      toast.error("Couldn't find a movie to suggest right now.");
+      return;
+    }
+
+    const randomIndex = Math.floor(Math.random() * uniqueMovies.length);
+    const randomMovie = uniqueMovies[randomIndex];
+    setDateNightPick(randomMovie);
+  }, [movieListsState]);
 
   const handleUnlock = useCallback(() => {
     const sessionData = {
@@ -546,6 +604,13 @@ function App() {
         >
           EmbedSu
         </button>
+        <button
+          onClick={handleDateNightPick}
+          className="cursor-pointer font-semibold py-2 px-5 rounded-md transition-colors duration-300 bg-pink-500/20 border-2 border-pink-500/50 text-pink-300 hover:bg-pink-500/40 hover:border-pink-500/70"
+          title="Pick a random movie for us!"
+        >
+          Date Night? 🎲
+        </button>
       </div>
 
       {submittedCode ? (
@@ -610,7 +675,7 @@ function App() {
       )}
       {/* --- Footer --- */}
       <footer className="text-center text-neutral-500 text-sm py-16">
-        made for my baby with ❤️
+        <p>made for my baby with ❤️</p>
       </footer>
 
       {showScrollTop && (
@@ -623,6 +688,52 @@ function App() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 19.5v-15m0 0l-6.75 6.75M12 4.5l6.75 6.75" />
           </svg>
         </button>
+      )}
+
+      {dateNightPick && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 transition-opacity duration-300" onClick={() => setDateNightPick(null)}>
+          <div
+            className="relative bg-gradient-to-br from-neutral-900 to-neutral-800 rounded-2xl p-8 text-center shadow-2xl shadow-pink-900/20 max-w-sm w-full mx-4 border border-neutral-700 transition-all duration-300 ease-in-out"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={handleDateNightPick}
+              className="absolute top-5 right-5 text-neutral-500 hover:text-white transition-colors cursor-pointer p-2 rounded-full hover:bg-neutral-700/50"
+              title="Suggest another movie"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+              </svg>
+            </button>
+            <h3 className="text-3xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-rose-400">
+              ✨ Date Night ✨
+            </h3>
+            <img
+              src={`https://image.tmdb.org/t/p/w500${dateNightPick.poster_path}`}
+              alt={dateNightPick.title}
+              className="w-full max-w-[200px] mx-auto rounded-lg mb-5 shadow-lg shadow-black/40 border-2 border-neutral-700/50"
+            />
+            <p className="text-2xl font-semibold text-white">{dateNightPick.title}</p>
+            <p className="text-neutral-400 mb-8">{dateNightPick.release_date?.substring(0, 4)}</p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={() => setDateNightPick(null)}
+                className="cursor-pointer bg-transparent border border-neutral-600 hover:bg-neutral-700/50 text-neutral-300 font-bold py-3 px-6 rounded-lg transition-all duration-300"
+              >
+                Maybe Later
+              </button>
+              <button
+                onClick={() => {
+                  handleMovieSelect(dateNightPick);
+                  setDateNightPick(null);
+                }}
+                className="cursor-pointer bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 shadow-lg shadow-pink-500/20 transform hover:scale-105"
+              >
+                Watch Now!
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
