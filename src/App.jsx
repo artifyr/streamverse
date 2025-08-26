@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useReducer } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import MovieSection from './components/MovieSection';
+import PinModal from './components/PinModal';
 
 // It's highly recommended to move this to a .env file
 // Create a .env file in your project root and add:
@@ -49,6 +50,29 @@ function movieListsReducer(state, action) {
 }
 
 function App() {
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    const sessionData = localStorage.getItem('vidgen_unlock_session');
+    if (!sessionData) {
+      return false;
+    }
+
+    try {
+      const { timestamp } = JSON.parse(sessionData);
+      // 2 hours in milliseconds
+      const EXPIRATION_TIME = 2 * 60 * 60 * 1000;
+      const isExpired = Date.now() - timestamp > EXPIRATION_TIME;
+
+      if (isExpired) {
+        localStorage.removeItem('vidgen_unlock_session');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      // If data is malformed, clear it and lock the site
+      localStorage.removeItem('vidgen_unlock_session');
+      return false;
+    }
+  });
   // State to hold the value from the input field
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -66,6 +90,11 @@ function App() {
 
   // Effect for showing random love toasts
   useEffect(() => {
+    // Don't show toasts if the site is locked
+    if (!isUnlocked) {
+      return;
+    }
+
     const phrases = [
       "I loveee youu babypie",
       "Hope you know i love youu",
@@ -112,11 +141,17 @@ function App() {
 
     const intervalId = setInterval(showRandomToast, 15 * 60 * 1000); // 15 minutes
     return () => clearInterval(intervalId); // Cleanup on unmount
-  }, []); // Empty array ensures this runs only once
+  }, [isUnlocked]); // Re-run when unlocked
 
   // Effect to fetch movie lists on initial load
   useEffect(() => {
     const fetchMovieLists = async () => {
+      // Don't fetch if the site is locked
+      if (!isUnlocked) {
+        dispatchMovieLists({ type: 'ABORT_FETCH' });
+        return;
+      }
+
       if (submittedCode) {
         // If a movie is selected, no need to load lists
         dispatchMovieLists({ type: 'ABORT_FETCH' });
@@ -239,7 +274,7 @@ function App() {
       }
     };
     fetchMovieLists();
-  }, [submittedCode]); // Re-fetch if we go back to the homepage
+  }, [submittedCode, isUnlocked]); // Re-fetch if we go back to the homepage or unlock
 
   useEffect(() => {
     localStorage.setItem('vidgen_imdb_code', submittedCode);
@@ -276,6 +311,14 @@ function App() {
 
   const handleGoHome = useCallback(() => {
     setSubmittedCode('');
+  }, []);
+
+  const handleUnlock = useCallback(() => {
+    const sessionData = {
+      timestamp: Date.now(),
+    };
+    localStorage.setItem('vidgen_unlock_session', JSON.stringify(sessionData));
+    setIsUnlocked(true);
   }, []);
 
   const scrollTop = useCallback(() => {
@@ -367,6 +410,8 @@ function App() {
 
   return (
     <div className="relative min-h-screen bg-neutral-900 text-white flex flex-col items-center p-6 pt-32 sm:p-8 sm:pt-32 font-sans">
+      {!isUnlocked && <PinModal onUnlock={handleUnlock} />}
+
       {submittedCode && (
         <button
           onClick={handleGoHome}
