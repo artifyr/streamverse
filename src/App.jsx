@@ -13,6 +13,8 @@ const initialMovieListsState = {
   isBarbieExpanded: false,
   tinkerbell: [],
   isTinkerbellExpanded: false,
+  bengali: [],
+  isBengaliExpanded: false,
   popular: [],
   isLoading: true,
   error: null,
@@ -29,6 +31,7 @@ function movieListsReducer(state, action) {
         popular: action.payload.popular,
         barbie: action.payload.barbie,
         tinkerbell: action.payload.tinkerbell,
+        bengali: action.payload.bengali,
       };
     case 'FETCH_ERROR':
       return { ...state, isLoading: false, error: action.payload };
@@ -36,6 +39,8 @@ function movieListsReducer(state, action) {
       return { ...state, isBarbieExpanded: !state.isBarbieExpanded };
     case 'TOGGLE_TINKERBELL_EXPAND':
       return { ...state, isTinkerbellExpanded: !state.isTinkerbellExpanded };
+    case 'TOGGLE_BENGALI_EXPAND':
+      return { ...state, isBengaliExpanded: !state.isBengaliExpanded };
     case 'ABORT_FETCH':
       return { ...state, isLoading: false };
     default:
@@ -153,16 +158,52 @@ function App() {
         }
       };
 
-      const filterAndDeduplicate = (movies, genreId) => {
-        return movies
-          .filter(
+      const filterAndDeduplicate = (movies, { genreId, requirePoster = true } = {}) => {
+        let filteredMovies = movies;
+
+        // 1. Filter by genre if genreId is provided
+        if (genreId) {
+          filteredMovies = filteredMovies.filter(
             (movie) =>
-              movie.genre_ids.includes(genreId) && movie.poster_path
-          )
-          .filter(
-            (movie, index, self) =>
-              index === self.findIndex((m) => m.id === movie.id)
+              // Safer check for genre_ids
+              Array.isArray(movie.genre_ids) && movie.genre_ids.includes(genreId)
           );
+        }
+
+        // 2. Filter by poster path if required
+        if (requirePoster) {
+          filteredMovies = filteredMovies.filter((movie) => movie.poster_path);
+        }
+
+        // 3. Deduplicate
+        return filteredMovies.filter(
+          (movie, index, self) =>
+            index === self.findIndex((m) => m.id === movie.id)
+        );
+      };
+
+      const fetchAllBengaliMovies = async () => {
+        try {
+          // Fetch 3 pages to get up to 60 movies
+          const pagePromises = [1, 2, 3].map(page =>
+            fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=en-US&page=${page}&with_origin_country=IN&with_original_language=bn&primary_release_date.lte=2009-12-31`)
+              .then(res => {
+                if (!res.ok) {
+                  console.error(`Failed to fetch page ${page} of Bengali movies`);
+                  return Promise.resolve({ results: [] }); // Don't break the Promise.all
+                }
+                return res.json();
+              })
+          );
+          const bengaliPagesData = await Promise.all(pagePromises);
+          return bengaliPagesData.reduce((allMovies, pageData) => {
+            allMovies.push(...(pageData.results || []));
+            return allMovies;
+          }, []);
+        } catch (error) {
+          console.error('Error fetching all Bengali movies:', error);
+          return []; // Return empty array on failure
+        }
       };
 
       try {
@@ -170,10 +211,12 @@ function App() {
           popularResponse,
           barbieMovies,
           tinkerbellMovies,
+          bengaliMovies,
         ] = await Promise.all([
           fetch(`https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`),
           fetchAllPagesForQuery('Barbie'),
           fetchAllPagesForQuery('Tinkerbell'),
+          fetchAllBengaliMovies(),
         ]);
 
         if (!popularResponse.ok) throw new Error('Failed to fetch popular movies');
@@ -185,8 +228,9 @@ function App() {
           type: 'FETCH_SUCCESS',
           payload: {
             popular: popularData.results || [],
-            barbie: filterAndDeduplicate(barbieMovies, animationGenreId),
-            tinkerbell: filterAndDeduplicate(tinkerbellMovies, animationGenreId),
+            barbie: filterAndDeduplicate(barbieMovies, { genreId: animationGenreId }),
+            tinkerbell: filterAndDeduplicate(tinkerbellMovies, { genreId: animationGenreId }),
+            bengali: filterAndDeduplicate(bengaliMovies),
           },
         });
       } catch (error) {
@@ -498,6 +542,17 @@ function App() {
               isExpandable={movieListsState.tinkerbell.length > FOR_YOU_INITIAL_LIMIT}
               isExpanded={movieListsState.isTinkerbellExpanded}
               onToggleExpand={() => dispatchMovieLists({ type: 'TOGGLE_TINKERBELL_EXPAND' })}
+            />
+          )}
+          {(movieListsState.isLoading || movieListsState.bengali.length > 0) && (
+            <MovieSection
+              title="Popular Bengali Movies (Before 2010)"
+              movies={movieListsState.isBengaliExpanded ? movieListsState.bengali : movieListsState.bengali.slice(0, FOR_YOU_INITIAL_LIMIT)}
+              isLoading={movieListsState.isLoading}
+              onMovieSelect={handleMovieSelect}
+              isExpandable={movieListsState.bengali.length > FOR_YOU_INITIAL_LIMIT}
+              isExpanded={movieListsState.isBengaliExpanded}
+              onToggleExpand={() => dispatchMovieLists({ type: 'TOGGLE_BENGALI_EXPAND' })}
             />
           )}
           <MovieSection
